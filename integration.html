@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>NZXT CAM - Temp Monitor (Circle BG)</title>
+<style>
+  :root{
+    --w: 640px;
+    --h: 64px;
+    --bg-size: cover;
+    --max-temp-cpu: 100;
+    --max-temp-gpu: 100;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  html,body{height:100%;margin:0;font-family:var(--font);background:#000;color:#fff;display:flex;align-items:center;justify-content:center;}
+  #app{width:var(--w);max-width:100%;box-sizing:border-box;padding:10px;display:flex;gap:12px;align-items:center;justify-content:flex-start;}
+  .circle {position:relative;width:128px;height:128px;min-width:128px;border-radius:50%;overflow:hidden;flex:0 0 128px;box-shadow:0 6px 18px rgba(0,0,0,0.6),inset 0 2px 8px rgba(255,255,255,0.03);background-size:cover;background-position:center;background-repeat:no-repeat;border:3px solid rgba(255,255,255,0.06);}
+  .circle::after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;background:linear-gradient(180deg,rgba(0,0,0,0.0) 0%,rgba(0,0,0,0.45) 100%);pointer-events:none;}
+  .info{flex:1;min-width:0;}
+  .title{font-size:14px;margin:0 0 6px 0;opacity:0.95;display:flex;align-items:center;gap:8px;}
+  .device{font-size:12px;opacity:0.6;}
+  .bars{display:flex;flex-direction:column;gap:8px;}
+  .barRow{display:flex;align-items:center;gap:8px;}
+  .label{width:48px;font-size:12px;opacity:0.9;}
+  .barTrack{position:relative;background:rgba(255,255,255,0.06);height:14px;flex:1;border-radius:999px;overflow:hidden;box-shadow:inset 0 -2px 8px rgba(0,0,0,0.6);}
+  .barFill{height:100%;width:0%;transform-origin:left center;transition:width 600ms linear;border-radius:999px;background:linear-gradient(90deg,rgba(255,100,80,0.95),rgba(240,60,200,0.95));box-shadow:0 2px 8px rgba(0,0,0,0.5);}
+  .value{width:56px;text-align:right;font-size:12px;opacity:0.95;}
+  .meta{margin-top:10px;font-size:11px;opacity:0.55;}
+  @media (max-width:420px){.circle{width:96px;height:96px;min-width:96px;}}
+</style>
+</head>
+<body>
+  <div id="app" role="application" aria-label="NZXT CAM Integration">
+    <div class="circle" id="bgCircle" aria-hidden="true"></div>
+    <div class="info">
+      <div class="title"><strong>Temperaturas (CAM)</strong><span class="device" id="deviceInfo">aguardando CAM...</span></div>
+      <div class="bars" id="bars">
+        <div class="barRow"><div class="label">CPU</div><div class="barTrack"><div class="barFill" id="cpuFill"></div></div><div class="value" id="cpuValue">-- °C</div></div>
+        <div class="barRow"><div class="label">GPU</div><div class="barTrack"><div class="barFill" id="gpuFill"></div></div><div class="value" id="gpuValue">-- °C</div></div>
+        <div class="barRow"><div class="label">RAM</div><div class="barTrack"><div class="barFill" id="ramFill"></div></div><div class="value" id="ramValue">-- %</div></div>
+      </div>
+      <div class="meta" id="meta">Waiting for CAM data...</div>
+    </div>
+  </div>
+<script>
+(function(){
+  const DEFAULT_BG = "vic.jpg";
+  const search = new URLSearchParams(window.location.search);
+  const bgParam = search.get('bg');
+  const bgUrl = bgParam ? decodeURIComponent(bgParam) : DEFAULT_BG;
+  const bgCircle = document.getElementById('bgCircle');
+  const deviceInfo = document.getElementById('deviceInfo');
+  const meta = document.getElementById('meta');
+  const cpuFill = document.getElementById('cpuFill');
+  const gpuFill = document.getElementById('gpuFill');
+  const ramFill = document.getElementById('ramFill');
+  const cpuValue = document.getElementById('cpuValue');
+  const gpuValue = document.getElementById('gpuValue');
+  const ramValue = document.getElementById('ramValue');
+  bgCircle.style.backgroundImage = `url("${bgUrl}")`;
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+  function percentFromTemp(temp,max){return clamp((temp/max)*100,0,100);}
+  const kraken = window.location.search.includes('kraken=1');
+  if(kraken){document.documentElement.style.background='#000';meta.textContent='Modo Kraken';}
+  else meta.textContent='Configuração local';
+  if(window.nzxt && window.nzxt.v1){window.nzxt.v1.onMonitoringDataUpdate=handleMonitoringData;meta.textContent+=' • NZXT API detectada';}
+  else meta.textContent+=' • NZXT API não detectada';
+  if(search.get('mock')==='1'){meta.textContent='Mock mode';setInterval(()=>{handleMonitoringData({cpus:[{avgTemp:35+Math.random()*45}],gpus:[{temp:40+Math.random()*40}],ram:{percentUsed:30+Math.random()*50}});},1000);}
+  function handleMonitoringData(data){
+    try{
+      const cpus=data.cpus||[],gpus=data.gpus||[],ram=data.ram||null;
+      const cpuTemp=cpus[0]?.avgTemp??null,gpuTemp=gpus[0]?.temp??null,ramPct=ram?.percentUsed??null;
+      if(cpuTemp!=null){const p=percentFromTemp(cpuTemp,100);cpuFill.style.width=p+'%';cpuValue.textContent=Math.round(cpuTemp)+' °C';}
+      if(gpuTemp!=null){const p=percentFromTemp(gpuTemp,100);gpuFill.style.width=p+'%';gpuValue.textContent=Math.round(gpuTemp)+' °C';}
+      if(ramPct!=null){const p=clamp(ramPct,0,100);ramFill.style.width=p+'%';ramValue.textContent=Math.round(ramPct)+' %';}
+      meta.textContent='Atualizado: '+new Date().toLocaleTimeString();
+    }catch(e){console.error(e);}
+  }
+})();</script>
+</body>
+</html>
